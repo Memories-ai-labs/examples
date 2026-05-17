@@ -1,23 +1,33 @@
 # Memories.ai Example Agents
 
-Runnable, fork-ready ReAct agents that show how to build real video-AI applications on the [Memories.ai](https://memories.ai) APIs. The taxonomy follows the canonical [Memories.ai Visual Agents PRD](https://www.notion.so/Memories-ai-Visual-Agents-PRD-363ec41ac6028126bfa5e48da2de8609), one agent file per PRD agent.
+Self-contained Jupyter notebooks that show how to build real video-AI applications on the [Memories.ai](https://memories.ai) API. One notebook per agent — pick the one closest to your use case, run it cell-by-cell, fork it.
 
-See [`PRD.md`](./PRD.md) for the build-side product rationale (what's in scope here vs. the source PRD).
+See [`PRD.md`](./PRD.md) for the architectural rationale.
 
-## The eight PRD agents
+## What's here
 
-| # | PRD agent | Implementation | What it does |
-|---|---|---|---|
-| 1 | **SOP Compliance** | [`agents/qsr_drivethru_sop.py`](./agents/qsr_drivethru_sop.py), [`agents/automotive_sop.py`](./agents/automotive_sop.py) | Verify employees follow SOPs; one file per scenario (QSR drive-thru, automotive service bay). Pattern generalizes to any rule + camera. |
-| 2 | **Service Quality** | [`agents/restaurant_service_quality.py`](./agents/restaurant_service_quality.py) | Build a service-event timeline from a floor cam → table touches, inter-course time, bounce count. |
-| 3 | **Security & Threat Detection** | [`agents/security_threat.py`](./agents/security_threat.py) | Scan footage for shoplifting, masked entry, scanner bypass, slip-and-fall, restricted-area breach, altercations — emits a severity-tagged incident log. |
-| 4 | **Video Searching Agent** | [`agents/video_searching.py`](./agents/video_searching.py) | Discover public-platform videos (YouTube / TikTok / Instagram / X) via the managed `/queries/stream` SSE endpoint. |
-| 5 | **Video Editing Agent (VEA)** | [`agents/video_editing.py`](./agents/video_editing.py) | Compose long-form into short-form via `/video/clip` + `/video/edit` (async, webhook-driven). |
-| 6 | **Personal Memory (LUCI)** | [`agents/luci_personal_memory.py`](./agents/luci_personal_memory.py) | Date-windowed natural-language questions over personal recordings. |
-| 7 | **Visual RAG** | [`agents/visual_rag.py`](./agents/visual_rag.py) | Two-channel retrieve (BY_CLIP + BY_AUDIO) → merge overlapping ranges → VLM-verify each candidate. |
-| 8 | **Creator Intelligence** | [`agents/creator_intelligence.py`](./agents/creator_intelligence.py) | Score a creator across production, audio, delivery, hook, and brand safety. |
+| # | Notebook | What it shows |
+|---|---|---|
+| 00 | [`notebooks/00_search_api_overview.ipynb`](./notebooks/00_search_api_overview.ipynb) | Reference — every `/search` variant including by-tag, by-camera, time-windowed, BY_AUDIO, exact-phrase transcripts |
+| 01 | [`notebooks/01_qsr_drivethru_sop.ipynb`](./notebooks/01_qsr_drivethru_sop.ipynb) | Agent 1 — SOP Compliance, QSR drive-thru scenario |
+| 02 | [`notebooks/02_restaurant_service_quality.ipynb`](./notebooks/02_restaurant_service_quality.ipynb) | Agent 2 — Service-event timeline + metrics (no VLM needed) |
+| 03 | [`notebooks/03_security_threat.ipynb`](./notebooks/03_security_threat.ipynb) | Agent 3 — Security & Threat Detection (6 scenarios, severity-tagged log) |
+| 04 | [`notebooks/04_automotive_sop.ipynb`](./notebooks/04_automotive_sop.ipynb) | Agent 1 again, automotive service-bay scenario — shows how scenario-generic the SOP pattern is |
+| 05 | [`notebooks/05_video_searching.ipynb`](./notebooks/05_video_searching.ipynb) | Agent 4 — Public-platform discovery via the managed `/queries/stream` SSE endpoint |
+| 06 | [`notebooks/06_video_editing.ipynb`](./notebooks/06_video_editing.ipynb) | Agent 5 — Async VEA pipeline via `/video/edit` (webhook-driven) |
+| 07 | [`notebooks/07_luci_personal_memory.ipynb`](./notebooks/07_luci_personal_memory.ipynb) | Agent 6 — LUCI personal memory (search + transcript + VLM identification) |
+| 08 | [`notebooks/08_visual_rag.ipynb`](./notebooks/08_visual_rag.ipynb) | Agent 7 — Visual RAG (two-channel retrieve → merge → VLM verify) |
+| 09 | [`notebooks/09_creator_intelligence.ipynb`](./notebooks/09_creator_intelligence.ipynb) | Agent 8 — Per-video VLM scoring → creator scorecard |
 
-Every agent emits a printable ReAct trace (Thought → Action → Observation → Answer) plus a structured JSON summary you can dump with `--out result.json`.
+Every notebook is **independent** — no shared `common/` package, no cross-notebook imports. Every API call is inlined with comments explaining the wire shape and gotchas.
+
+## How to read these
+
+1. Open `notebooks/00_search_api_overview.ipynb` first. It shows every flavor of `/search` you'll use across the agents — semantic by clip, by audio, exact phrase, by tag, by camera, time-windowed.
+2. Pick the agent closest to your problem and open that notebook.
+3. Cell-by-cell: read the markdown, run the code, watch the API output, read the next markdown.
+
+The notebooks are designed for sequential reading. Don't skip the helper-functions cells — they're the API integration patterns you'll copy into your own code.
 
 ## Quickstart
 
@@ -27,115 +37,46 @@ cd examples
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# Get a key at https://api-platform.memories.ai/stripe
-export MEMORIES_API_KEY=sk-mavi-...
+export MEMORIES_API_KEY=sk-mavi-...   # from https://api-platform.memories.ai/stripe
 
-# Run the LUCI personal-memory agent against an already-indexed library
-python -m agents.luci_personal_memory "What did I have for lunch last Tuesday?" \
-  --date-after "2026-05-05 00:00:00" \
-  --unique-id luci-default
+jupyter lab notebooks/
 ```
 
-Each agent supports `--upload <file.mp4>` to upload-then-search, or `--video-no <VI...>` to skip straight to retrieval against an already-indexed video.
-
-## How the agents are built
-
-Every agent follows the four-step ReAct skeleton from the cookbook:
-
-| Step | Endpoint(s) | Helper |
-|---|---|---|
-| **1. Index** | `POST /upload`, `GET /get_metadata` (poll until `status=PARSE`) | `MemoriesClient.upload_file`, `wait_for_parse` |
-| **2. Retrieve** | `POST /search` (semantic, BY_CLIP / BY_AUDIO), `GET /search_audio_transcripts` (exact phrase) | `MemoriesClient.search`, `search_audio_transcripts` |
-| **3. Reason** | `POST /vu/chat/completions` (Gemini / Qwen / Nova VLM) | `MemoriesClient.vlm_complete` |
-| **4. Loop** | Agent-specific control flow over steps 2 & 3 | `agents/*.py::run()` |
-
-The shared client lives in [`common/`](./common). It's intentionally thin — read [`common/client.py`](./common/client.py) before customizing anything; it's ~200 lines.
+Open `00_search_api_overview.ipynb`, click **Run All**, watch real API responses come back.
 
 ## Configuration
 
 | Env var | Purpose | Default |
 |---|---|---|
 | `MEMORIES_API_KEY` | Your Memories.ai key (`sk-mavi-...`) | _required_ |
-| `MEMORIES_API_HOST` | Visual Search host | `https://api.memories.ai/serve/api/v1` |
-| `MEMORIES_VLM_HOST` | Visual Intelligence host (VLM) | `https://mavi-backend.memories.ai/serve/api/v2` |
-| `MEMORIES_VLM_MODEL` | VLM model id used for reasoning | `gemini:gemini-2.5-flash` |
-| `MEMORIES_MEDIA_URL_TEMPLATE` | Public-URL template for VLM reads — see below | _unset_ (agents skip VLM step) |
+| `MEMORIES_MEDIA_URL_TEMPLATE` | Public-URL template for VLM reads — e.g. `https://your-cdn/{video_no}.mp4` | _unset_ (notebooks fall back to the public test asset for demos) |
 
-Copy [`.env.example`](./.env.example) to `.env` and `python-dotenv` will pick it up.
+Copy [`.env.example`](./.env.example) to `.env` for local use. The notebooks read from `os.environ`.
 
 ## Hosting videos for the VLM
 
-The Memories.ai VLM endpoint (`POST /vu/chat/completions`) needs a publicly fetchable `file_uri`. The Visual Search `/download` endpoint streams the raw bytes back to you — it does **not** return a hosted URL. So to wire up the full ReAct loop (index → search → VLM), you must bridge that gap.
+The Memories.ai VLM endpoint needs a publicly fetchable `file_uri`. The Visual Search `/download` endpoint streams binary bytes — it does **not** return a hosted URL. So to wire up the full ReAct loop (index → search → VLM), you must bridge that gap yourself.
 
-Two options:
+In every agent notebook that runs the VLM, the bridge is a `MEDIA_URL_MAP` dict (or the `MEMORIES_MEDIA_URL_TEMPLATE` env var). For demo runs, the notebooks default to mapping the seed video to the public test asset (`test_1min.mp4`) so the VLM step works out of the box. For production, replace those entries with your own CDN URLs.
 
-1. **Template** (simplest, if your videos are already on your own CDN). Set:
-   ```bash
-   export MEMORIES_MEDIA_URL_TEMPLATE="https://your-cdn.example.com/{video_no}.mp4"
-   ```
-   The agents substitute `{video_no}` at lookup time.
+## The eight PRD agents at a glance
 
-2. **Explicit map** (per-run override). Pass `media_url_map={video_no: url}` when constructing `MemoriesClient`, or use the `--media-url VI...=https://...` flag exposed by each agent.
-
-If neither is configured, each agent gracefully falls back to a **retrieval-only summary** — it still runs `/search` and emits its ReAct trace, but skips the VLM verification step. That's enough to validate retrieval quality before you wire up hosting.
-
-## Testing
-
-Hermetic tests (no network, fake HTTP):
-
-```bash
-pip install pytest
-pytest -q
-```
-
-Live smoke test against the real API (consumes a small amount of credit):
-
-```bash
-export MEMORIES_API_KEY=sk-mavi-...
-python tests/live_smoke.py
-```
-
-The live smoke verifies the wire format hasn't drifted: one `/search` against the public namespace, one `/vu/chat/completions` against a public test asset, and a `/get_metadata` round-trip.
-
-## Repo layout
-
-```
-examples/
-├── PRD.md                              # build-side product rationale
-├── README.md                           # this file
-├── requirements.txt
-├── .env.example
-├── common/
-│   ├── client.py                       # MemoriesClient — typed wrapper
-│   ├── react.py                        # ReActAgent trace recorder
-│   └── poll.py                         # wait_for_parse helper
-├── agents/
-│   ├── qsr_drivethru_sop.py            # PRD agent 1 (scenario A)
-│   ├── automotive_sop.py               # PRD agent 1 (scenario B)
-│   ├── restaurant_service_quality.py   # PRD agent 2
-│   ├── security_threat.py              # PRD agent 3
-│   ├── video_searching.py              # PRD agent 4
-│   ├── video_editing.py                # PRD agent 5
-│   ├── luci_personal_memory.py         # PRD agent 6
-│   ├── visual_rag.py                   # PRD agent 7
-│   └── creator_intelligence.py         # PRD agent 8
-└── tests/
-    ├── conftest.py                     # fake HTTP session
-    ├── test_client.py                  # wire-shape contract tests
-    ├── test_agents.py                  # full-loop tests for the original five
-    ├── test_new_agents.py              # full-loop tests for PRD agents 3/4/5/8
-    ├── test_helpers.py                 # pure-logic tests
-    ├── live_smoke.py                   # three-call live smoke
-    └── live_agents.py                  # live exercise of every agent
-```
+| # | Agent | Endpoints used |
+|---|---|---|
+| 1 | SOP Compliance | `/search` BY_CLIP → `/vu/chat/completions` |
+| 2 | Service Quality | `/search` BY_CLIP × N queries → metrics |
+| 3 | Security & Threat | `/search` BY_CLIP × N scenarios → `/vu/chat/completions` |
+| 4 | Video Searching | `/queries/stream` (SSE) |
+| 5 | Video Editing (VEA) | `/upload` (VI), `/video/clip`, `/video/edit` (async + webhook) |
+| 6 | Personal Memory (LUCI) | `/search` + `/search_audio_transcripts` → `/vu/chat/completions` |
+| 7 | Visual RAG | `/search` BY_CLIP + BY_AUDIO → merge → `/vu/chat/completions` |
+| 8 | Creator Intelligence | `/vu/chat/completions` × N videos → scorecard |
 
 ## Related repos
 
-| Repo | When to look there |
-|---|---|
-| [`Memories-ai-labs/api-docs`](https://github.com/Memories-ai-labs/api-docs) | The full Memories.ai API reference (Mintlify). Every endpoint these agents call is documented there. |
-| [`Memories-ai-labs/video-searching-agent`](https://github.com/Memories-ai-labs/video-searching-agent) | Open-source agent for cross-platform social discovery (YouTube/TikTok/Instagram/X). |
-| [`Memories-ai-labs/vea-open-source`](https://github.com/Memories-ai-labs/vea-open-source) | Open-source Video Editing Agent — long-form → short-form highlight pipeline. |
+- [`Memories-ai-labs/api-docs`](https://github.com/Memories-ai-labs/api-docs) — full Memories.ai API reference (Mintlify).
+- [`Memories-ai-labs/video-searching-agent`](https://github.com/Memories-ai-labs/video-searching-agent) — open-source agent for cross-platform social discovery, ie. the server side of notebook 05.
+- [`Memories-ai-labs/vea-open-source`](https://github.com/Memories-ai-labs/vea-open-source) — open-source Video Editing Agent, ie. the server side of notebook 06.
 
 ## License
 
