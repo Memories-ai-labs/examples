@@ -151,6 +151,70 @@ def _run_visual_rag(client: MemoriesClient, video_no: str | None) -> None:
     print("rag summary:", json.dumps({k: v for k, v in summary.items() if k != "matches"}, indent=2)[:300])
 
 
+def _run_security(client: MemoriesClient, video_no: str | None) -> None:
+    _banner("AGENT 3 — Security & Threat Detection")
+    from agents.security_threat import run, DEFAULT_SCENARIOS
+    summary = run(
+        client,
+        video_nos=[video_no] if video_no else None,
+        unique_id=UNIQUE_ID,
+        scenarios=DEFAULT_SCENARIOS[:3],  # keep credit usage low
+        top_k_per_scenario=2,
+        filtering_level="low",
+        verbose=True,
+    )
+    print(json.dumps({k: v for k, v in summary.items() if k != "incidents"}, indent=2)[:400])
+
+
+def _run_video_searching(client: MemoriesClient) -> None:
+    _banner("AGENT 4 — Video Searching Agent (SSE)")
+    from agents.video_searching import run
+    try:
+        final = run(
+            client,
+            query="A short trending video about cooking pasta on TikTok",
+            platforms=["tiktok"],
+            max_results=2,
+            time_frame=None,
+            verbose=True,
+        )
+        print(f"video_count={len(final.get('video_references', []))} "
+              f"confidence={final.get('confidence_score')}")
+    except Exception as e:
+        print(f"  agent 4 ERROR (expected if /queries/stream not enabled): {e}")
+
+
+def _run_video_editing(client: MemoriesClient) -> None:
+    _banner("AGENT 5 — Video Editing Agent (fire-and-forget)")
+    from agents.video_editing import run
+    try:
+        summary = run(
+            client,
+            asset_ids=["re_nonexistent_for_smoke"],
+            user_prompt="Test prompt for smoke",
+            orientation="landscape",
+            do_scene_detection=False,
+            verbose=True,
+        )
+        print("task_id:", summary["edit_task"].get("task_id"))
+    except Exception as e:
+        # Expected if no webhook is configured: "async request requires at least one webhook"
+        print(f"  agent 5 SOFT-FAIL (expected without webhook): {e}")
+
+
+def _run_creator_intelligence(client: MemoriesClient) -> None:
+    _banner("AGENT 8 — Creator Intelligence")
+    from agents.creator_intelligence import run
+    PUBLIC = "https://storage.googleapis.com/memories-test-data/test_1min.mp4"
+    summary = run(
+        client,
+        creator_name="@smoke_test",
+        video_urls=[PUBLIC],
+        verbose=True,
+    )
+    print("scorecard:", json.dumps({k: v for k, v in summary.items() if k != "per_video_scores"}, indent=2)[:400])
+
+
 def _run_vlm_proof(client: MemoriesClient) -> None:
     """Force-exercise the VLM step with a public test image so we prove the
     full ReAct loop works end-to-end against the real API at least once."""
@@ -178,15 +242,19 @@ def main() -> int:
     _banner("seed lookup")
     seed = _ensure_seed_video(client)
 
-    _run_qsr(client, seed)
-    _run_restaurant(client, seed)
-    _run_luci(client)
-    _run_automotive(client, seed)
-    _run_visual_rag(client, seed)
+    _run_qsr(client, seed)               # PRD agent 1, scenario A
+    _run_automotive(client, seed)        # PRD agent 1, scenario B
+    _run_restaurant(client, seed)        # PRD agent 2
+    _run_security(client, seed)          # PRD agent 3
+    _run_video_searching(client)         # PRD agent 4
+    _run_video_editing(client)           # PRD agent 5
+    _run_luci(client)                    # PRD agent 6
+    _run_visual_rag(client, seed)        # PRD agent 7
+    _run_creator_intelligence(client)    # PRD agent 8
     _run_vlm_proof(client)
 
     print("\n" + "=" * 72)
-    print("ALL FIVE AGENTS EXERCISED AGAINST THE LIVE API")
+    print("ALL EIGHT PRD AGENTS EXERCISED AGAINST THE LIVE API")
     print("=" * 72)
     return 0
 

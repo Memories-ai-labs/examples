@@ -1,18 +1,21 @@
 # Memories.ai Example Agents
 
-Runnable, fork-ready ReAct agents that show how to build real video-AI applications on the [Memories.ai](https://memories.ai) APIs. Each agent corresponds to one entry in the [Visual Agents Use Case Cookbook](https://github.com/Memories-ai-labs/api-docs/blob/main/visual-agents/use-cases.mdx).
+Runnable, fork-ready ReAct agents that show how to build real video-AI applications on the [Memories.ai](https://memories.ai) APIs. The taxonomy follows the canonical [Memories.ai Visual Agents PRD](https://www.notion.so/Memories-ai-Visual-Agents-PRD-363ec41ac6028126bfa5e48da2de8609), one agent file per PRD agent.
 
-See [`PRD.md`](./PRD.md) for the product rationale, the architecture, and what is intentionally **not** in scope.
+See [`PRD.md`](./PRD.md) for the build-side product rationale (what's in scope here vs. the source PRD).
 
-## What's here
+## The eight PRD agents
 
-| Agent | Use case | File |
-|---|---|---|
-| 1. QSR Drive-Thru SOP | Verify staff handoffs, greetings, drink inclusion at the pickup window | [`agents/qsr_drivethru_sop.py`](./agents/qsr_drivethru_sop.py) |
-| 2. Restaurant Quality Monitor | Build a service-event timeline from a floor cam → table touches, inter-course time, bounces | [`agents/restaurant_service_quality.py`](./agents/restaurant_service_quality.py) |
-| 3. LUCI Personal Memory | Date-windowed "what did I do on Tuesday?" over personal recordings | [`agents/luci_personal_memory.py`](./agents/luci_personal_memory.py) |
-| 4. Automotive Service-Bay SOP | Per-arrival audit: greeting within 60s? Air filter checked? | [`agents/automotive_sop.py`](./agents/automotive_sop.py) |
-| 5. Visual RAG over a Library | Two-channel retrieve (BY_CLIP + BY_AUDIO) → merge → VLM-verify each candidate | [`agents/visual_rag.py`](./agents/visual_rag.py) |
+| # | PRD agent | Implementation | What it does |
+|---|---|---|---|
+| 1 | **SOP Compliance** | [`agents/qsr_drivethru_sop.py`](./agents/qsr_drivethru_sop.py), [`agents/automotive_sop.py`](./agents/automotive_sop.py) | Verify employees follow SOPs; one file per scenario (QSR drive-thru, automotive service bay). Pattern generalizes to any rule + camera. |
+| 2 | **Service Quality** | [`agents/restaurant_service_quality.py`](./agents/restaurant_service_quality.py) | Build a service-event timeline from a floor cam → table touches, inter-course time, bounce count. |
+| 3 | **Security & Threat Detection** | [`agents/security_threat.py`](./agents/security_threat.py) | Scan footage for shoplifting, masked entry, scanner bypass, slip-and-fall, restricted-area breach, altercations — emits a severity-tagged incident log. |
+| 4 | **Video Searching Agent** | [`agents/video_searching.py`](./agents/video_searching.py) | Discover public-platform videos (YouTube / TikTok / Instagram / X) via the managed `/queries/stream` SSE endpoint. |
+| 5 | **Video Editing Agent (VEA)** | [`agents/video_editing.py`](./agents/video_editing.py) | Compose long-form into short-form via `/video/clip` + `/video/edit` (async, webhook-driven). |
+| 6 | **Personal Memory (LUCI)** | [`agents/luci_personal_memory.py`](./agents/luci_personal_memory.py) | Date-windowed natural-language questions over personal recordings. |
+| 7 | **Visual RAG** | [`agents/visual_rag.py`](./agents/visual_rag.py) | Two-channel retrieve (BY_CLIP + BY_AUDIO) → merge overlapping ranges → VLM-verify each candidate. |
+| 8 | **Creator Intelligence** | [`agents/creator_intelligence.py`](./agents/creator_intelligence.py) | Score a creator across production, audio, delivery, hook, and brand safety. |
 
 Every agent emits a printable ReAct trace (Thought → Action → Observation → Answer) plus a structured JSON summary you can dump with `--out result.json`.
 
@@ -98,7 +101,7 @@ The live smoke verifies the wire format hasn't drifted: one `/search` against th
 
 ```
 examples/
-├── PRD.md                              # product rationale and architecture
+├── PRD.md                              # build-side product rationale
 ├── README.md                           # this file
 ├── requirements.txt
 ├── .env.example
@@ -107,17 +110,23 @@ examples/
 │   ├── react.py                        # ReActAgent trace recorder
 │   └── poll.py                         # wait_for_parse helper
 ├── agents/
-│   ├── qsr_drivethru_sop.py            # 1
-│   ├── restaurant_service_quality.py   # 2
-│   ├── luci_personal_memory.py         # 3
-│   ├── automotive_sop.py               # 4
-│   └── visual_rag.py                   # 5
+│   ├── qsr_drivethru_sop.py            # PRD agent 1 (scenario A)
+│   ├── automotive_sop.py               # PRD agent 1 (scenario B)
+│   ├── restaurant_service_quality.py   # PRD agent 2
+│   ├── security_threat.py              # PRD agent 3
+│   ├── video_searching.py              # PRD agent 4
+│   ├── video_editing.py                # PRD agent 5
+│   ├── luci_personal_memory.py         # PRD agent 6
+│   ├── visual_rag.py                   # PRD agent 7
+│   └── creator_intelligence.py         # PRD agent 8
 └── tests/
     ├── conftest.py                     # fake HTTP session
     ├── test_client.py                  # wire-shape contract tests
-    ├── test_agents.py                  # full-loop tests per agent
+    ├── test_agents.py                  # full-loop tests for the original five
+    ├── test_new_agents.py              # full-loop tests for PRD agents 3/4/5/8
     ├── test_helpers.py                 # pure-logic tests
-    └── live_smoke.py                   # against the real API
+    ├── live_smoke.py                   # three-call live smoke
+    └── live_agents.py                  # live exercise of every agent
 ```
 
 ## Related repos

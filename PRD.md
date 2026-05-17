@@ -1,9 +1,12 @@
-# Memories.ai Example Agents — PRD
+# Memories.ai Example Agents — PRD (build-side)
 
-**Status**: Draft v1
+**Status**: v2 — aligned with the canonical 8-agent taxonomy
 **Date**: 2026-05-17
 **Owner**: Developer Experience
+**Canonical source**: [Memories.ai Visual Agents PRD (Notion)](https://www.notion.so/Memories-ai-Visual-Agents-PRD-363ec41ac6028126bfa5e48da2de8609)
 **Companion docs**: [`api-docs/visual-agents/use-cases.mdx`](https://github.com/Memories-ai-labs/api-docs/blob/main/visual-agents/use-cases.mdx)
+
+> This document is the **build-side** PRD: what we're shipping in this repo, how the code is organized, what's in/out of scope. The product PRD lives in Notion (link above) and is the source of truth for which agents exist and what they do. When the two diverge, Notion wins.
 
 ## Problem
 
@@ -47,17 +50,22 @@ Success is **time-to-first-output**: a developer with an API key should `git clo
 | **DevRel writer** drafting a blog or tutorial | A working end-to-end example to embed | One `agents/*.py` per blog post |
 | **Internal QA** verifying API changes don't break docs | Catch contract drift before a release | `tests/test_client.py` runs every endpoint shape |
 
-## Scope: which use cases
+## Scope: which agents
 
-Mirrors the five cookbook patterns in `api-docs/visual-agents/use-cases.mdx`:
+One implementation file per agent in the [canonical 8-agent PRD](https://www.notion.so/Memories-ai-Visual-Agents-PRD-363ec41ac6028126bfa5e48da2de8609), with PRD agent 1 (SOP Compliance) shipping with two scenario examples because the pattern is the same — only the prompt + search query change:
 
-1. **QSR Drive-Thru SOP Compliance** (`agents/qsr_drivethru_sop.py`) — verify staff handoffs, greetings, drink inclusion. ReAct: search for handoff moments → VLM-verify each.
-2. **Full-Service Restaurant Quality** (`agents/restaurant_service_quality.py`) — service-event timeline from a floor cam → metrics (table touches, inter-course time, bounce count).
-3. **LUCI Personal Video Memory** (`agents/luci_personal_memory.py`) — date-windowed semantic search + transcript clue + VLM scene-identification → one-line natural-language answer.
-4. **Automotive Service-Bay SOP** (`agents/automotive_sop.py`) — detect arrivals → audit 60-second window for greeting + air-filter inspection.
-5. **Visual RAG over Lectures** (`agents/visual_rag.py`) — two-channel retrieve (BY_CLIP + BY_AUDIO) → merge overlapping ranges → VLM-verify each candidate.
+| # | PRD agent | File(s) |
+|---|---|---|
+| 1 | SOP Compliance | `agents/qsr_drivethru_sop.py`, `agents/automotive_sop.py` |
+| 2 | Service Quality | `agents/restaurant_service_quality.py` |
+| 3 | Security & Threat Detection | `agents/security_threat.py` |
+| 4 | Video Searching Agent | `agents/video_searching.py` |
+| 5 | Video Editing Agent (VEA) | `agents/video_editing.py` |
+| 6 | Personal Memory (LUCI) | `agents/luci_personal_memory.py` |
+| 7 | Visual RAG | `agents/visual_rag.py` |
+| 8 | Creator Intelligence | `agents/creator_intelligence.py` |
 
-Each agent is independently runnable; no cross-agent imports.
+Each agent is independently runnable; no cross-agent imports. The three odd-shaped ones (4 wraps SSE, 5 is async + webhook, 8 doesn't use `/search`) each have a dedicated walk-through in `agents/README.md`.
 
 ## Architecture
 

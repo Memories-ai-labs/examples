@@ -323,6 +323,119 @@ class MemoriesClient:
 
     # -------- Visual Intelligence: VLM completions ---------------------------
 
+    # -------- Visual Agents: managed endpoints (queries, /video/*) -----------
+
+    def queries_stream(
+        self,
+        query: str,
+        *,
+        platforms: Iterable[str] | None = None,
+        max_results: int = 5,
+        time_frame: str | None = None,
+        enable_clarification: bool = False,
+        on_event: Any = None,
+    ) -> dict[str, Any]:
+        """Drive the managed Video Searching Agent (POST /queries/stream).
+
+        Emits SSE events as the agent works through search → analyze →
+        synthesize. If ``on_event`` is provided, it is called with
+        ``(event_name, data_dict)`` for every typed event. Returns the
+        ``complete`` event's payload (the full structured result) or raises
+        MemoriesError if the stream ends in error / never emits complete.
+        """
+        body: dict[str, Any] = {"query": query, "max_results": max_results}
+        if platforms:
+            body["platforms"] = list(platforms)
+        if time_frame:
+            body["time_frame"] = time_frame
+        if enable_clarification:
+            body["enable_clarification"] = True
+
+        with self.session.post(
+            f"{self.vlm_host}/queries/stream",
+            headers={**self._headers, "Accept": "text/event-stream"},
+            json=body,
+            stream=True,
+            timeout=self.timeout * 5,
+        ) as resp:
+            if resp.status_code >= 400:
+                raise MemoriesError(
+                    f"HTTP {resp.status_code} from {resp.url}: {resp.text[:400]}",
+                    payload=resp.text,
+                )
+            final: dict[str, Any] | None = None
+            last_error: dict[str, Any] | None = None
+            for event_name, data in _iter_sse(resp):
+                if on_event:
+                    on_event(event_name, data)
+                if event_name == "complete":
+                    final = data
+                elif event_name == "error":
+                    last_error = data
+            if final is None:
+                msg = (last_error or {}).get("message", "stream ended without 'complete'")
+                raise MemoriesError(f"queries_stream: {msg}", payload=last_error)
+            return final
+
+    def video_clip(self, asset_id: str) -> dict[str, Any]:
+        """POST /video/clip — async scene detection, returns task_id."""
+        resp = self.session.post(
+            f"{self.vlm_host}/video/clip",
+            headers=self._headers,
+            json={"asset_id": asset_id},
+            timeout=self.timeout,
+        )
+        return self._unwrap_int_code(resp)
+
+    def video_split(self, asset_id: str, *, segment_seconds: int = 60) -> dict[str, Any]:
+        """POST /video/split — async time-based split, returns task_id."""
+        resp = self.session.post(
+            f"{self.vlm_host}/video/split",
+            headers=self._headers,
+            json={"asset_id": asset_id, "segment_seconds": segment_seconds},
+            timeout=self.timeout,
+        )
+        return self._unwrap_int_code(resp)
+
+    def video_edit(
+        self,
+        asset_ids: Iterable[str],
+        user_prompt: str,
+        *,
+        orientation: str = "landscape",
+    ) -> dict[str, Any]:
+        """POST /video/edit — async AI-driven edit, returns task_id."""
+        resp = self.session.post(
+            f"{self.vlm_host}/video/edit",
+            headers=self._headers,
+            json={
+                "asset_ids": list(asset_ids),
+                "orientation": orientation,
+                "user_prompt": user_prompt,
+            },
+            timeout=self.timeout,
+        )
+        return self._unwrap_int_code(resp)
+
+    def _unwrap_int_code(self, resp: requests.Response) -> Any:
+        """Variant of _unwrap for the Visual Agents endpoints whose envelope
+        uses integer ``code: 200`` rather than the Visual Search ``"0000"``."""
+        if resp.status_code >= 400:
+            raise MemoriesError(
+                f"HTTP {resp.status_code} from {resp.url}: {resp.text[:400]}",
+                payload=resp.text,
+            )
+        body = resp.json()
+        code = body.get("code")
+        ok = code in (200, "200", "0000")
+        if not ok:
+            raise MemoriesError(
+                f"API error from {resp.url}: code={code} msg={body.get('msg')!r}",
+                code=str(code),
+                payload=body,
+            )
+        return body.get("data", body)
+
     def vlm_complete(
         self,
         prompt: str,
@@ -397,6 +510,51 @@ class MemoriesClient:
         if strip_code_fences:
             text = _strip_json_code_fence(text)
         return text
+
+
+def _iter_sse(resp: requests.Response):
+    """Yield (event_name, parsed_data) tuples from a Server-Sent Events stream.
+
+    Follows the standard:
+      event: <name>
+      data: <json>
+      <blank line>
+
+    Lines that aren't event/data are skipped. Data is parsed as JSON; non-JSON
+    payloads yield the raw string for the caller to handle. End of stream is
+    triggered by the response being exhausted.
+    """
+    import json as _json
+
+    event: str = "message"
+    data_lines: list[str] = []
+    for raw in resp.iter_lines(decode_unicode=True):
+        if raw is None:
+            continue
+        if raw == "":
+            if data_lines:
+                payload = "\n".join(data_lines)
+                try:
+                    parsed = _json.loads(payload)
+                except (TypeError, ValueError):
+                    parsed = payload
+                yield event, parsed
+            event = "message"
+            data_lines = []
+            continue
+        if raw.startswith(":"):  # SSE comment
+            continue
+        if raw.startswith("event:"):
+            event = raw[len("event:"):].strip()
+        elif raw.startswith("data:"):
+            data_lines.append(raw[len("data:"):].lstrip())
+    # Flush trailing event if no final blank line
+    if data_lines:
+        try:
+            parsed = __import__("json").loads("\n".join(data_lines))
+        except (TypeError, ValueError):
+            parsed = "\n".join(data_lines)
+        yield event, parsed
 
 
 def _strip_json_code_fence(text: str) -> str:
