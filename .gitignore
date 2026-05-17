@@ -11,6 +11,12 @@ venv/
 .idea/
 .vscode/
 *.log
+
+# Jupyter
+.ipynb_checkpoints/
+*.executed.ipynb
+
+# Local artifacts
 results/
 out/
 tmp/

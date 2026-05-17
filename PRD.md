@@ -1,126 +1,115 @@
-# Memories.ai Example Agents — PRD
+# Memories.ai Example Agents — PRD (build-side)
 
-**Status**: Draft v1
+**Status**: v3 — notebook-first
 **Date**: 2026-05-17
 **Owner**: Developer Experience
+**Source of truth**: [Memories.ai Visual Agents PRD (Notion)](https://www.notion.so/Memories-ai-Visual-Agents-PRD-363ec41ac6028126bfa5e48da2de8609) — internal
 **Companion docs**: [`api-docs/visual-agents/use-cases.mdx`](https://github.com/Memories-ai-labs/api-docs/blob/main/visual-agents/use-cases.mdx)
+
+> This document is the build-side PRD: what we're shipping in this repo, how it's organized, what's intentionally out of scope. The product PRD is the source of truth for which agents exist and what they do.
 
 ## Problem
 
-Today the [Visual Agents Use Case Cookbook](https://github.com/Memories-ai-labs/api-docs/blob/main/visual-agents/use-cases.mdx) shows what a Memories.ai agent looks like — five ReAct-style snippets covering QSR compliance, restaurant quality monitoring, personal video memory, automotive SOPs, and visual RAG. But every snippet is hand-rolled, references endpoints in passing, and assumes the reader will compose a working agent on their own. The docs prove the *patterns* are possible; they don't give a builder a runnable agent to fork.
+The canonical PRD describes eight Visual Agents at a *use-case* level — what they solve, who uses them, what they output. The PRD does **not** show how to implement any of them against today's API. A customer evaluating Memories.ai for an agent use case has to:
 
-The result is that a customer evaluating Memories.ai for a video-AI use case has to:
+1. Read the PRD to find the agent closest to their problem.
+2. Cross-reference the API docs to figure out which endpoints to call.
+3. Glue together upload, polling, search, and VLM calls themselves before they can hit a runnable demo.
+4. Repeat for every agent they want to compare.
 
-1. Skim a long doc page for the relevant snippet.
-2. Copy-paste fragments that don't import cleanly.
-3. Glue together upload, indexing, polling, search, and VLM calls themselves before they can hit a runnable demo.
-4. Repeat that work for every new use case they want to compare.
-
-The friction-to-first-success is hours, not minutes.
+Time-to-first-output is hours, not minutes.
 
 ## Goal
 
-Ship a public, MIT-licensed reference implementation of every cookbook use case as a **runnable agent**, fork-ready, with:
+Ship a self-contained Jupyter notebook for every PRD agent, plus one reference notebook for the retrieval API surface. Every notebook is:
 
-- A shared `common/` library that wraps the Memories.ai endpoints we use most (Visual Search + Visual Intelligence VLM).
-- One Python module per use case, each:
-  - Drives the full pipeline end-to-end (index → retrieve → reason).
-  - Surfaces a printable ReAct trace (Thought / Action / Observation / Answer).
-  - Has a CLI so a customer can invoke it against their own footage in 30 seconds.
-- A test suite that proves every agent's control flow works (mocked) and a live smoke-test that proves the wire format matches the production API.
+- **Independent** — no shared `common/` imports. Every API call inlined with comments explaining the wire shape and the gotchas.
+- **Walkable** — cell-by-cell, alternating markdown (what & why) with code (the actual API call).
+- **Runnable** — cell `Run All` against a real `MEMORIES_API_KEY` produces real outputs in seconds.
+- **Forkable** — copy a notebook, change the queries/prompts/schemas, you've got your own agent.
 
-Success is **time-to-first-output**: a developer with an API key should `git clone`, `pip install`, set `MEMORIES_API_KEY`, and see ReAct traces over their own footage within five minutes of opening the repo.
+Success is **time-to-first-output**: a developer with an API key should `git clone`, `pip install`, set `MEMORIES_API_KEY`, open Jupyter, and watch the search-API-overview notebook produce real hits within five minutes.
+
+## Why notebooks instead of a Python package
+
+An earlier iteration of this repo shipped CLI scripts (`python -m agents.qsr_drivethru_sop ...`) and a typed Python client in `common/`. That structure is great for reuse but bad for *learning*. A customer evaluating the platform wants to see the request body, the response shape, and the reasoning step — not eight layers of abstraction. Notebooks let us:
+
+1. Show the full request body inline (no wrapper class hiding it).
+2. Display the actual API response with markdown commentary in between.
+3. Let the reader run partial pipelines (e.g. retrieval only, no VLM).
+
+The Python-package version is preserved in this repo's git history if anyone needs it; it isn't recommended.
 
 ## Non-goals
 
-- A general-purpose, LLM-driven agent framework. Each agent has a hand-rolled control loop tuned to its problem. Trying to unify them behind a planner LLM would obscure the actual cookbook patterns.
-- Production-grade deployment (queues, retries, circuit breakers). These are reference implementations — the customer adds production hardening.
-- A web UI. CLI + structured JSON output. UI is downstream.
-- Coverage of every Memories.ai endpoint. The Visual Agents managed endpoints (`/video/edit`, `/queries/stream`, `/screenplay/*`) and the entire Stream Processing surface are out of scope here — they have their own reference repos.
+- A general-purpose, LLM-driven planner. Each notebook has a hand-rolled control flow tuned to its problem. A planner LLM would obscure the patterns.
+- Production hardening (queues, retries, circuit breakers). These are reference implementations.
+- A web UI. The notebook IS the UI.
+- Coverage of every Memories.ai endpoint. We exercise the endpoints the eight PRD agents need, plus the search variants (by-tag, by-camera, etc.) that the agents compose.
 
 ## Users
 
 | User | Job | What they pull from this repo |
 |---|---|---|
-| **Solutions engineer** evaluating Memories.ai for a customer | "Can the platform do X?" in 1 day | A runnable demo for the closest use case |
-| **Application engineer** about to build on Memories.ai | Avoid re-deriving the ReAct skeleton | The `common/` client + the relevant agent as scaffolding |
-| **DevRel writer** drafting a blog or tutorial | A working end-to-end example to embed | One `agents/*.py` per blog post |
-| **Internal QA** verifying API changes don't break docs | Catch contract drift before a release | `tests/test_client.py` runs every endpoint shape |
+| **Solutions engineer** evaluating Memories.ai | "Can the platform do X?" | The agent notebook closest to X, run end-to-end |
+| **Application engineer** building on Memories.ai | Avoid re-deriving the ReAct skeleton | The relevant notebook copied as scaffolding |
+| **DevRel writer** drafting a blog or tutorial | A working end-to-end example to embed | One notebook per blog post |
 
-## Scope: which use cases
-
-Mirrors the five cookbook patterns in `api-docs/visual-agents/use-cases.mdx`:
-
-1. **QSR Drive-Thru SOP Compliance** (`agents/qsr_drivethru_sop.py`) — verify staff handoffs, greetings, drink inclusion. ReAct: search for handoff moments → VLM-verify each.
-2. **Full-Service Restaurant Quality** (`agents/restaurant_service_quality.py`) — service-event timeline from a floor cam → metrics (table touches, inter-course time, bounce count).
-3. **LUCI Personal Video Memory** (`agents/luci_personal_memory.py`) — date-windowed semantic search + transcript clue + VLM scene-identification → one-line natural-language answer.
-4. **Automotive Service-Bay SOP** (`agents/automotive_sop.py`) — detect arrivals → audit 60-second window for greeting + air-filter inspection.
-5. **Visual RAG over Lectures** (`agents/visual_rag.py`) — two-channel retrieve (BY_CLIP + BY_AUDIO) → merge overlapping ranges → VLM-verify each candidate.
-
-Each agent is independently runnable; no cross-agent imports.
-
-## Architecture
+## Repo layout
 
 ```
 examples/
-├── PRD.md                    # this doc
-├── README.md                 # quickstart + index
-├── requirements.txt
+├── PRD.md                                # this doc
+├── README.md                             # quickstart + notebook index
+├── requirements.txt                      # requests, python-dotenv, nbformat
 ├── .env.example
-├── common/
-│   ├── client.py            # MemoriesClient — typed wrapper over the endpoints
-│   ├── react.py             # ReActAgent — trace recorder (Thought/Action/Observe/Answer)
-│   └── poll.py              # wait_for_parse — block until /get_metadata → PARSE
-├── agents/
-│   ├── qsr_drivethru_sop.py
-│   ├── restaurant_service_quality.py
-│   ├── luci_personal_memory.py
-│   ├── automotive_sop.py
-│   └── visual_rag.py
-└── tests/
-    ├── conftest.py          # fake HTTP session helpers
-    ├── test_client.py       # wire-shape contract tests
-    ├── test_agents.py       # end-to-end tests per agent (mocked HTTP)
-    ├── test_helpers.py      # pure-logic tests (no I/O)
-    └── live_smoke.py        # against the real API; requires MEMORIES_API_KEY
+└── notebooks/
+    ├── 00_search_api_overview.ipynb      # reference — every /search variant including by-tag
+    ├── 01_qsr_drivethru_sop.ipynb        # PRD agent 1, scenario A
+    ├── 02_restaurant_service_quality.ipynb # PRD agent 2
+    ├── 03_security_threat.ipynb          # PRD agent 3
+    ├── 04_automotive_sop.ipynb           # PRD agent 1, scenario B
+    ├── 05_video_searching.ipynb          # PRD agent 4
+    ├── 06_video_editing.ipynb            # PRD agent 5
+    ├── 07_luci_personal_memory.ipynb     # PRD agent 6
+    ├── 08_visual_rag.ipynb               # PRD agent 7
+    └── 09_creator_intelligence.ipynb     # PRD agent 8
 ```
 
-### The shared skeleton
+## Notebook anatomy
 
-Every agent walks the same ReAct shape, derived from `use-cases.mdx`:
+Every agent notebook follows the same shape (the search-overview is the same minus the agent-specific reasoning steps):
 
-| Step | `common/` API | Memories.ai endpoint |
-|---|---|---|
-| **1. Index** | `MemoriesClient.upload_file` / `upload_url` + `wait_for_parse` | `POST /upload`, `GET /get_metadata` |
-| **2. Retrieve** | `MemoriesClient.search`, `search_audio_transcripts` | `POST /search`, `GET /search_audio_transcripts` |
-| **3. Reason** | `MemoriesClient.vlm_complete` | `POST /vu/chat/completions` |
-| **4. Loop** | hand-rolled per agent in `agents/*.py::run()` | — |
+| Section | Content |
+|---|---|
+| Title + use case | Markdown — what the agent does, drawn from the PRD |
+| Setup | Markdown explaining the env vars, code cell with `import requests`, host config, API key wiring |
+| Helper functions | Code cells — each helper is one function with a docstring explaining the endpoint shape, the gotchas, and the response envelope |
+| Step 1: Retrieve | Markdown explanation → code cell with the search call → real output |
+| Step 2: Reason | Markdown → code cell with the VLM call → real JSON output |
+| Step 3: Aggregate | Markdown → code cell with the domain-specific aggregation logic |
+| Where to go next | Markdown — how to extend, what to swap out for production |
 
-The `ReActAgent` trace surface is `thought / action / observe / answer / timed(...)`. Every agent prints its trace by default — the printable log is the deliverable, not just the JSON summary.
+Helper functions are inlined rather than imported so each notebook stands alone. The wire-shape comments are the *point* — if the customer's bigger code needs to handle `code="0001"` retries or `status="errored"` envelopes, the comments tell them why.
 
-### Configuration
+## Verification
 
-A single `MEMORIES_API_KEY` env var unlocks everything. Hosts and the VLM model can be overridden via `MEMORIES_API_HOST` / `MEMORIES_VLM_HOST` / `MEMORIES_VLM_MODEL` if a user is on a private cluster or wants a different VLM (Gemini default; swap to `qwen:` or `nova:`).
+Every notebook was hand-crafted and the search-overview was executed end-to-end against `api.memories.ai` to verify the inlined API code works as written. Each agent notebook also reuses code patterns that were live-verified in the previous iteration of this repo (see the git history for the Python-package version + 44-test suite).
 
-## Testing strategy
+Specifically:
 
-| Layer | What it covers | When it runs |
-|---|---|---|
-| **`tests/test_client.py`** | The wire shape of every endpoint we call — body, params, error envelope handling | Every `pytest` |
-| **`tests/test_agents.py`** | Full ReAct loop per agent, with HTTP routed to fakes | Every `pytest` |
-| **`tests/test_helpers.py`** | Pure-logic helpers (merge, dedupe, metrics, poll) | Every `pytest` |
-| **`tests/live_smoke.py`** | A minimum-credit smoke against the real `api.memories.ai` — one `/search`, one `/vu/chat/completions` | Manually, with `MEMORIES_API_KEY` set |
-
-Mocks ensure the suite is hermetic and cheap. The live smoke verifies the production contract still matches the wrapper.
+- Visual Search `/search` (BY_CLIP, BY_AUDIO, with `tag`, `camera_tag`, `datetime_taken` filters) — verified against the live API in `00_search_api_overview.ipynb`.
+- Exact-phrase `/search_audio_transcripts` — verified live.
+- Visual Intelligence `/vu/chat/completions` with Gemini — verified live (e.g. creator-intelligence scorecard returned overall=91 → Strong Fit).
+- Visual Agents `/queries/stream` SSE — verified live (returned 5 real TikTok results, confidence 0.9).
+- Visual Agents `/video/edit` — verified live (correctly enforces the webhook requirement; task_id returned cleanly when webhook configured).
 
 ## Open questions
 
-- **Clip-range to VLM**: today `/search` returns `startTime`/`endTime`, `/download` returns the whole file. The agents work around this by passing the full video URL and steering the VLM with timestamps in the prompt — same workaround the cookbook documents. If the platform later adds a clip-URL response, the agents should switch to it.
-- **`datetime_taken` upper-bound**: `/search` filters videos captured *at-or-after* a timestamp but not before. Agent 3 (LUCI) compensates with client-side filtering; long-term we want a true range filter.
-- **Webhook vs poll for indexing**: current implementation polls. For production use, the customer should provide a `callback` URL on `/upload` — the cookbook explains this trade-off, and our `MemoriesClient.upload_file` already accepts the parameter.
+- **Webhook callbacks for VEA** (`/video/edit`): notebook 06 stops at task-id submission and explains how the callback works. A future "VEA + Flask receiver" notebook could close that loop, but a runnable webhook server is out of scope for a notebook.
+- **Clip-range to VLM**: today `/search` returns time-ranges, `/download` returns the whole file. The notebooks pass the full video URL and steer the VLM with timestamps in the prompt — same workaround the api-docs cookbook documents. If the platform later adds a clip-URL response, the notebooks should switch.
 
 ## Out-of-scope follow-ups
 
-- **Public-platform agent** wrapping `POST /queries/stream` (Video Searching Agent). This use case is already covered by [`Memories-ai-labs/video-searching-agent`](https://github.com/Memories-ai-labs/video-searching-agent).
-- **Async editing pipelines** wrapping `/video/edit` / `/video/clip` / `/video/split`. Covered by [`Memories-ai-labs/vea-open-source`](https://github.com/Memories-ai-labs/vea-open-source).
-- **Streaming live-camera SOP** rather than batch-shift SOP. Needs the Stream Processing endpoints — separate repo when those are GA.
+- A web UI that lets non-developers run these notebooks against their footage (would need hosted Jupyter + key-per-tenant).
+- Cross-notebook orchestration (e.g. "run the security agent on every shift, then have the creator-intelligence agent score each shift") — the PRD agents are reference implementations, not a production framework.
